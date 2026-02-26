@@ -26,6 +26,6 @@
 
 5. Open the [Config file](./src/data/resume.tsx) and make changes
 
-# License
+## License
 
-Licensed under the [MIT license]
+Licensed under the [MIT license](LICENSE).
