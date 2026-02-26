@@ -250,8 +250,8 @@ export const DATA = {
   ],
   hackathons: [
     {
-      title: "Hack Western 5",
-      dates: "November 23rd - 25th, 2018",
+      title: "Hack Western 15",
+      dates: "November 23rd - 25th, 2012",
       location: "London, Ontario",
       description:
         "Developed a mobile application which delivered bedtime stories to children using augmented reality.",
@@ -261,9 +261,9 @@ export const DATA = {
       links: [] as HackathonLink[],
     },
     {
-      title: "Hack The North",
-      dates: "September 14th - 16th, 2018",
-      location: "Waterloo, Ontario",
+      title: "Deploy Central Network System",
+      dates: "September 14th - 16th, 2020",
+      location: "Ascott Dhaka, BD",
       description:
         "Developed a mobile application which delivers university campus wide events in real time to all students.",
       image:
