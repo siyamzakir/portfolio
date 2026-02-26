@@ -1,10 +1,15 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @plugin "@tailwindcss/typography";
+@import "@fontsource/cascadia-code/400.css";
+@import "@fontsource/cascadia-code/600.css";
+@import "@fontsource/cascadia-code/700.css";
 
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme inline {
+  --font-sans: "Cascadia Code", ui-monospace, monospace;
+  --font-mono: "Cascadia Code", ui-monospace, monospace;
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);

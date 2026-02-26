@@ -24,21 +24,21 @@ export default function ContactSection() {
           Get in Touch
         </h2>
         <p className="mx-auto max-w-lg text-muted-foreground text-balance">
-          Want to connect? Feel free to email me at{" "}
+          Want to connect? Feel free to {" "}
           <Link
             href="mailto:siiyamzakir@gmail.com"
             className="text-blue-500 hover:underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded-sm"
           >
-            siiyamzakir@gmail.com
+            email
           </Link>{" "}
-          or reach me on WhatsApp:{" "}
+          me or reach me on{" "}
           <Link
             href="https://wa.me/8801717862830"
             target="_blank"
             rel="noopener noreferrer"
             className="text-blue-500 hover:underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded-sm"
           >
-            +8801717862830
+            WhatsApp
           </Link>
           .<br />
           Please include a clear and direct message. Solicitation messages will
