@@ -1,38 +1,142 @@
 ---
-title: "Git Workflow Guide: From Chaos to Clarity"
-publishedAt: "2024-12-10"
-updatedAt: "2024-12-10"
-author: "John Doe"
-summary: "Master Git workflows that keep your team productive and your codebase healthy."
+title: "The CI/CD Pipeline That Keeps My Projects Stable"
+publishedAt: "2025-10-05"
+updatedAt: "2025-10-05"
+author: "Siyam Zakir"
+summary: "From manual FTP uploads in 2014 to zero-downtime Docker deployments today — here's the Git and CI/CD workflow I run across every AppsZone project."
 image: "https://images.unsplash.com/photo-1556075798-4825dfaaf498?w=800&h=192&fit=crop"
 ---
 
-# Git Workflow Guide: From Chaos to Clarity
+In 2014 when I started on Upwork, deploying meant zipping files, FTP-ing to shared hosting, and crossing my fingers. Today I run automated pipelines that build, test, and deploy to Docker in under 3 minutes — with a rollback button if anything breaks.
 
-Git is powerful, but teams usually struggle because they don’t agree on a few basics. A simple workflow keeps history readable, reviews focused, and releases less stressful.
+Here's the exact workflow I landed on after iterating through every bad idea in between.
 
-This is a lightweight guide you can adopt in a day and iterate on later.
+## Branch Strategy (Keep It Simple)
 
-## A simple team workflow
+```
+main         ← production, always deployable
+staging      ← pre-production testing
+feature/*    ← one feature per branch
+fix/*        ← hotfixes, merged to main + staging
+```
 
-- Branch from `main` for every change.
-- Keep branches small and short-lived.
-- Open a pull request early and ask for review.
-- Merge back to `main` once tests pass.
+Three rules:
+1. Nothing merges to `main` without a PR review.
+2. All PRs must pass CI before merge.
+3. `main` deploys automatically. `staging` deploys automatically. Everything else is manual.
 
-## Commit message tips
+## Commit Message Convention
 
-- Start with a clear verb (“add”, “fix”, “remove”, “refactor”).
-- Keep the first line short and specific.
-- Prefer multiple small commits over one giant “WIP”.
+```bash
+feat: add visa application status webhook
+fix: resolve lead duplicate on chatbot re-entry
+chore: upgrade Laravel to 11.x
+refactor: extract email notification into job
+docs: add API endpoint docs for /leads
+```
 
-## PR checklist
+This feeds into automatic changelogs and makes `git log --oneline` actually readable.
 
-1. Explain what changed and why.
-2. Link the issue or describe the user impact.
-3. Add tests (or explain why not).
-4. Keep the diff small enough to review quickly.
+## The GitHub Actions Pipeline
 
-## Wrap-up
+```yaml title=".github/workflows/ci.yml"
+name: CI
 
-The goal isn’t “perfect Git” — it’s fewer surprises and faster collaboration. Start simple, write down the rules, and improve them as your team grows.
+on:
+  pull_request:
+    branches: [main, staging]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_DATABASE: test_db
+          MYSQL_ROOT_PASSWORD: root
+        options: --health-cmd="mysqladmin ping" --health-interval=10s
+
+      redis:
+        image: redis:alpine
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.3"
+          extensions: pdo_mysql, redis, bcmath, gd
+
+      - name: Install dependencies
+        run: composer install --prefer-dist --no-progress
+
+      - name: Run tests
+        env:
+          DB_CONNECTION: mysql
+          DB_HOST: 127.0.0.1
+          DB_DATABASE: test_db
+          DB_USERNAME: root
+          DB_PASSWORD: root
+          REDIS_HOST: 127.0.0.1
+        run: php artisan test --parallel
+```
+
+## Zero-Downtime Deploy
+
+```yaml title=".github/workflows/deploy.yml"
+name: Deploy to Production
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.PROD_HOST }}
+          username: deploy
+          key: ${{ secrets.DEPLOY_KEY }}
+          script: |
+            cd /var/www/appszonebd
+            git pull origin main
+            docker compose build app
+            docker compose up -d --no-deps --scale app=2 app
+            sleep 10
+            docker compose up -d --no-deps --scale app=1 app
+            docker compose exec -T app php artisan migrate --force
+            docker compose exec -T app php artisan queue:restart
+            docker compose exec -T app php artisan config:cache
+```
+
+The scale-to-2 then scale-to-1 trick gives a brief overlap during container restart — poor man's blue-green deployment without a load balancer.
+
+## Rollback in 30 Seconds
+
+```bash
+# On the server
+git log --oneline -5          # find last good commit
+git checkout <commit-hash>
+docker compose up -d --build
+```
+
+The database migration issue is the only real risk. That's why migrations must be backward-compatible. Never drop a column in the same deploy that removes it from the app.
+
+## What This Looks Like in Practice
+
+| Project | Avg deploy time | Rollbacks in last year |
+|---------|----------------|------------------------|
+| Immigration CRM | 2m 40s | 0 |
+| Real Estate Platform | 1m 55s | 1 |
+| LMS | 3m 10s | 0 |
+| AI Chatbot + CRM | 2m 20s | 0 |
+
+The pipeline config templates are in [my GitHub](https://github.com/siyamzakir). Feel free to copy, adapt, and improve.

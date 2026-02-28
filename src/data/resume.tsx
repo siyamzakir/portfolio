@@ -19,7 +19,7 @@ type HackathonLink = {
 };
 
 export const DATA = {
-  name: "Siyam",
+  name: "Siyam Zakir",
   initials: "DV",
   url: "#",
   location: "Dhaka, Bangladesh",  
@@ -192,7 +192,7 @@ export const DATA = {
     
       {
       title: "Smart Real Estate Platform",
-      href: "https://appszonebd.com",
+      href: "https://realestate.appszonebd.com/",
       dates: "June 2023 - December 2023",
       active: true,
       description:
@@ -242,29 +242,86 @@ export const DATA = {
       image: "/lms.png",
       video: "",
     },
+    {
+      title: "ZeuZ - Powered Codeless Automation Platform",
+      href: "https://zeuz.ai",
+      dates: "January 2025 - Currently",
+      active: true,
+      description:
+        "ZeuZ.ai is an AI-powered, no-code software testing platform that automates test creation, execution, and reporting for web, mobile, desktop, API, IoT, and database applications.",
+      technologies: [
+        "Laravel",
+        "Next.js",
+        "MySQL",
+        "React",
+        "TailwindCSS",
+        "AWS S3",
+        "CI/CD",
+      ],
+      links: [
+        {
+          type: "Profile",
+          href: "https://zeuz.ai",
+          icon: <Icons.globe className="size-3" />,
+        },
+      ],
+      image: "/zeuz.gif",
+      video: "",
+    },
   ],
   hackathons: [
     {
-      title: "Hack Western 15",
-      dates: "November 23rd - 25th, 2012",
-      location: "London, Ontario",
+      title: "AI Chatbot × CRM — One Seamless Brain",
+      dates: "June 2024 - Present",
+      location: "AppsZone, Dhaka, BD · Remote",
       description:
-        "Developed a mobile application which delivered bedtime stories to children using augmented reality.",
-      image:
-        "https://pub-83c5db439b40468498f97946200806f7.r2.dev/hackline/hack-western.png",
-      mlh: "https://s3.amazonaws.com/logged-assets/trust-badge/2019/mlh-trust-badge-2019-white.svg",
-      links: [] as HackathonLink[],
+        "Conceived and shipped an AI-powered chatbot that lives inside a purpose-built CRM — not bolted on top of it. Conversations, lead captures, and follow-up tasks all collapse into a single workflow: a prospect chats, the bot qualifies, the CRM logs, and the agent acts — zero manual handoff. Built on the OpenAI API with a Laravel + React backbone, the system slashed response time by 80% and freed agents from repetitive triage work entirely.",
+      image: "/chatbot.png",
+      mlh: "",
+      links: [
+        {
+          title: "GitHub",
+          href: "https://github.com/siyamzakir",
+          icon: <Icons.github className="size-3" />,
+        },
+      ] as HackathonLink[],
     },
     {
-      title: "Deploy Central Network System",
-      dates: "September 14th - 16th, 2020",
-      location: "Ascott Dhaka, BD",
+      title: "Self-Hosted Mail Server — Zero Dependency",
+      dates: "March 2024",
+      location: "AppsZone HQ · Dhaka, BD",
       description:
-        "Developed a mobile application which delivers university campus wide events in real time to all students.",
-      image:
-        "https://pub-83c5db439b40468498f97946200806f7.r2.dev/hackline/hack-the-north.png",
-      mlh: "https://s3.amazonaws.com/logged-assets/trust-badge/2019/mlh-trust-badge-2019-white.svg",
-      links: [] as HackathonLink[],
+        "Designed and deployed a fully self-hosted mail server infrastructure for AppsZone, taking the company off third-party email providers entirely. Set up Postfix + Dovecot on bare metal with DKIM, DMARC, and SPF records tuned to hit a near-perfect deliverability score. Added spam filtering via SpamAssassin, automated TLS certificate renewal, and a real-time monitoring dashboard. The result: full ownership of company communications with zero monthly SaaS fees and an inbox reputation that commercial providers envy.",
+      image: "/appszone.png",
+      mlh: "",
+      links: [
+        {
+          title: "AppsZone",
+          href: "https://appszonebd.com",
+          icon: <Icons.globe className="size-3" />,
+        },
+      ] as HackathonLink[],
+    },
+    {
+      title: "10 Years of Shipping — A Full-Stack Chronicle",
+      dates: "April 2014 - Present",
+      location: "Worldwide · Remote",
+      description:
+        "From a single freelance gig in 2014 to leading full-stack architecture at AppsZone — this is a decade of relentlessly building things that work. Immigration CRMs for Australian agencies, real estate platforms, AI-assisted learning management systems, blockchain prototypes, and Docker-orchestrated cloud deployments. Every project a new constraint. Every constraint a new skill. The stack keeps evolving; the drive to ship clean, scalable software never changes.",
+      image: "/me.png",
+      mlh: "",
+      links: [
+        {
+          title: "Upwork",
+          href: "https://www.upwork.com/freelancers/siyamzakir",
+          icon: <Icons.globe className="size-3" />,
+        },
+        {
+          title: "Fiverr",
+          href: "https://www.fiverr.com/siyam30",
+          icon: <Icons.globe className="size-3" />,
+        },
+      ] as HackathonLink[],
     },
   ],
 } as const;

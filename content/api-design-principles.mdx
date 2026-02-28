@@ -1,33 +1,176 @@
 ---
-title: "REST API Design Principles That Stand the Test of Time"
-publishedAt: "2024-12-12"
-updatedAt: "2024-12-12"
-author: "John Doe"
-summary: "Learn how to design APIs that developers love to use and are easy to maintain."
-image: "https://images.unsplash.com/photo-1558494949-ef010cbdcc31?w=800&h=192&fit=crop"
+title: "Laravel + Docker: My Production Workflow for Scalable PHP Apps"
+publishedAt: "2025-12-20"
+updatedAt: "2025-12-20"
+author: "Siyam Zakir"
+summary: "After shipping a dozen Laravel apps to production — CRMs, LMS platforms, real estate systems — here's the Docker-based workflow I keep coming back to."
+image: "https://images.unsplash.com/photo-1605745341112-85968b19335a?w=800&h=192&fit=crop"
 ---
 
-# REST API Design Principles That Stand the Test of Time
+I've shipped Laravel apps in a lot of configurations over the years: shared hosting, VPS with Apache, DigitalOcean Droplets with Nginx, and now Docker on bare metal with CI/CD pipelines. After running [AppsZone](https://appszonebd.com) projects through all of these, Docker is where I stopped looking for alternatives.
 
-Great APIs feel boring in the best way: predictable, consistent, and easy to reason about. When the surface area is simple, teams ship faster and clients break less often.
+Here's the actual setup I use — not a tutorial starter kit, but the one running in production.
 
-This is a lightweight checklist you can keep in mind while designing new endpoints or reviewing an existing API.
+## The Compose File
 
-## Core principles
+```yaml title="docker-compose.yml"
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    volumes:
+      - ./storage:/var/www/html/storage
+      - ./.env:/var/www/html/.env
+    networks:
+      - internal
 
-- Use clear, consistent **resource names** (think nouns).
-- Keep behavior aligned with **HTTP semantics** (read vs write).
-- Return **consistent response shapes** so clients don’t guess.
-- Prefer **sane defaults** with optional query parameters for filtering/sorting.
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf
+      - ./certbot/conf:/etc/letsencrypt
+      - ./certbot/www:/var/www/certbot
+    depends_on:
+      - app
+    networks:
+      - internal
 
-## A simple checklist
+  mysql:
+    image: mysql:8.0
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${DB_DATABASE}
+      MYSQL_USER: ${DB_USERNAME}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+    volumes:
+      - mysql_data:/var/lib/mysql
+    networks:
+      - internal
 
-1. Pick stable resource paths (plural nouns are a common convention).
-2. Use a small set of status codes consistently.
-3. Document pagination and what “next/previous” means.
-4. Be explicit about authentication and authorization requirements.
-5. Add brief examples in docs for the “happy path” and common errors.
+  redis:
+    image: redis:alpine
+    restart: unless-stopped
+    networks:
+      - internal
 
-## Wrap-up
+  queue:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: php artisan queue:work --tries=3 --sleep=3
+    restart: unless-stopped
+    depends_on:
+      - redis
+      - mysql
+    networks:
+      - internal
 
-If you optimize for consistency first, your API will be easier to document, easier to test, and easier for others to adopt.
+networks:
+  internal:
+
+volumes:
+  mysql_data:
+```
+
+No ports exposed except Nginx. App, MySQL, Redis, and Queue workers talk through the internal Docker network.
+
+## The Dockerfile
+
+```dockerfile title="Dockerfile"
+FROM php:8.3-fpm-alpine
+
+RUN apk add --no-cache \
+    libpng-dev libjpeg-dev freetype-dev \
+    libzip-dev zip unzip git
+
+RUN docker-php-ext-install \
+    pdo_mysql bcmath gd zip opcache
+
+COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
+
+WORKDIR /var/www/html
+COPY . .
+
+RUN composer install --optimize-autoloader --no-dev \
+    && php artisan config:cache \
+    && php artisan route:cache \
+    && php artisan view:cache \
+    && chown -R www-data:www-data storage bootstrap/cache
+```
+
+## CI/CD Pipeline (GitHub Actions)
+
+```yaml title=".github/workflows/deploy.yml"
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy to VPS
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          script: |
+            cd /var/www/myapp
+            git pull origin main
+            docker compose build app queue
+            docker compose up -d --no-deps app queue
+            docker compose exec -T app php artisan migrate --force
+            docker compose exec -T app php artisan queue:restart
+```
+
+Push to `main`, and the server pulls, rebuilds, migrates, and restarts — without downtime.
+
+## Queue Workers for Heavy Lifting
+
+The LMS I built at [theanalytichub.com](https://theanalytichub.com/training/) processes video transcoding jobs asynchronously. Without a queue worker, video uploads would block the HTTP process for minutes.
+
+```php title="ProcessVideoJob.php"
+class ProcessVideoJob implements ShouldQueue
+{
+    public int $tries = 3;
+    public int $timeout = 300;
+
+    public function handle(): void
+    {
+        FFMpeg::fromDisk('s3')
+            ->open($this->video->path)
+            ->export()
+            ->toDisk('s3')
+            ->inFormat(new X264)
+            ->save($this->video->hls_path);
+
+        $this->video->update(['status' => 'ready']);
+    }
+}
+```
+
+The queue worker container handles this independently of the web container. Crash one, the other keeps running.
+
+## Worth the Setup?
+
+| Project | Stack | Status |
+|---------|-------|--------|
+| Immigration CRM | Laravel + React + Docker | Live |
+| Real Estate Platform | WordPress + Docker | Live |
+| Learning Management System | Laravel + FFmpeg + Docker | Live |
+| AI Chatbot + CRM | Laravel + OpenAI + Docker | Live |
+
+Every single one runs this same pattern. Once you have it, spinning up a new project takes an hour.
+
+The Dockerfiles and compose templates live in [my GitHub](https://github.com/siyamzakir).

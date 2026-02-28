@@ -1,41 +1,137 @@
 ---
-title: "TypeScript Best Practices for Clean, Maintainable Code"
-publishedAt: "2024-12-08"
-updatedAt: "2024-12-08"
-author: "John Doe"
-summary: "Essential TypeScript patterns and practices that will make your codebase more robust and easier to maintain."
+title: "TypeScript Patterns I Actually Use in Full-Stack Apps"
+publishedAt: "2025-11-14"
+updatedAt: "2025-11-14"
+author: "Siyam Zakir"
+summary: "After years of building full-stack apps with Next.js and Node.js, these are the TypeScript patterns that genuinely reduce bugs and make codebases easier to navigate."
 image: "https://images.unsplash.com/photo-1555066931-4365d14bab8c?w=800&h=192&fit=crop"
 ---
 
-# TypeScript Best Practices for Clean, Maintainable Code
+I started using TypeScript seriously when we switched our front end at [AppsZone](https://appszonebd.com) from plain JavaScript React to a typed Next.js + Node.js stack. The first few weeks were friction. A year later, I can't imagine shipping without it.
 
-TypeScript shines when it helps you model reality — not when it forces you to fight types all day. A few small defaults can make a codebase feel <mark>calmer, safer, and easier to refactor</mark>.
+These are the patterns that stuck — not the textbook ones, the ones I actually reach for every week.
 
-<MediaContainer
-  src="https://images.unsplash.com/photo-1555066931-4365d14bab8c?w=1200&fit=crop"
-  alt="TypeScript code on screen"
-/>
+## 1. The Result Type for API Calls
 
-## Practical rules of thumb
+Instead of `try/catch` everywhere, I model success and failure as data:
 
-- Turn on strictness and fix the sharp edges early.
-- Prefer readable types over clever types.
-- Use unions for “one of these”, interfaces for “shape of this”.
-- Avoid `any` as a shortcut; it becomes ~~future debt~~ fast.
+```typescript
+type Result<T, E = string> =
+  | { ok: true; data: T }
+  | { ok: false; error: E };
 
-## One pattern worth memorizing
+async function fetchLead(id: string): Promise<Result<Lead>> {
+  try {
+    const lead = await db.leads.findById(id);
+    if (!lead) return { ok: false, error: "Lead not found" };
+    return { ok: true, data: lead };
+  } catch {
+    return { ok: false, error: "Database error" };
+  }
+}
 
-```ts
-type Result<T> =
-  | { ok: true; value: T }
-  | { ok: false; error: string };
+// At the call site:
+const result = await fetchLead(id);
+if (!result.ok) {
+  return res.status(404).json({ error: result.error });
+}
+// result.data is Lead here — TypeScript knows
+```
 
-export function parseNumber(input: string): Result<number> {
-  const n = Number(input);
-  return Number.isFinite(n) ? { ok: true, value: n } : { ok: false, error: "Not a number" };
+No more `catch (e: any)`. Errors are values.
+
+## 2. Discriminated Unions for State Machines
+
+Our immigration CRM has visa applications that move through clear stages. Discriminated unions make invalid state unrepresentable:
+
+```typescript
+type ApplicationStatus =
+  | { status: "draft" }
+  | { status: "submitted"; submittedAt: Date }
+  | { status: "under_review"; assignedAgent: string }
+  | { status: "approved"; visaGrantDate: Date }
+  | { status: "rejected"; reason: string };
+
+function renderStatusBadge(app: ApplicationStatus) {
+  switch (app.status) {
+    case "approved":
+      return <Badge>{app.visaGrantDate.toDateString()}</Badge>; // visaGrantDate guaranteed here
+    case "rejected":
+      return <Badge variant="destructive">{app.reason}</Badge>;
+    default:
+      return <Badge>{app.status}</Badge>;
+  }
 }
 ```
 
-## Wrap-up
+If you try to access `app.visaGrantDate` on a `draft` application, TypeScript stops you at compile time.
 
-The best TypeScript code reads like good documentation: clear names, predictable shapes, and errors that point you to the fix.
+## 3. Zod for Runtime Validation at API Boundaries
+
+Types are erased at runtime. Anything coming from a client, webhook, or external API needs runtime validation too:
+
+```typescript
+import { z } from "zod";
+
+const CreateLeadSchema = z.object({
+  name: z.string().min(2).max(100),
+  email: z.string().email(),
+  visa_type: z.enum(["student", "skilled", "partner", "visitor"]),
+  phone: z.string().optional(),
+});
+
+type CreateLeadInput = z.infer<typeof CreateLeadSchema>;
+
+// In the Next.js API route:
+export async function POST(req: Request) {
+  const body = await req.json();
+  const parsed = CreateLeadSchema.safeParse(body);
+
+  if (!parsed.success) {
+    return Response.json({ error: parsed.error.flatten() }, { status: 422 });
+  }
+
+  const lead = await createLead(parsed.data); // typed as CreateLeadInput
+  return Response.json(lead);
+}
+```
+
+Schema is the single source of truth for both the TypeScript type and the runtime check.
+
+## 4. Typed Environment Variables
+
+```typescript title="env.ts"
+import { z } from "zod";
+
+const envSchema = z.object({
+  DATABASE_URL: z.string().url(),
+  OPENAI_API_KEY: z.string().min(1),
+  REDIS_URL: z.string().url(),
+  NODE_ENV: z.enum(["development", "production", "test"]),
+});
+
+export const env = envSchema.parse(process.env);
+```
+
+App crashes immediately on startup if any required env var is missing — not after the first API call touches it.
+
+## 5. Utility Types That Actually Help
+
+```typescript
+// Pick only what you need from a big model
+type LeadSummary = Pick<Lead, "id" | "name" | "status" | "assignedTo">;
+
+// Everything required (strip optional)
+type RequiredLead = Required<Lead>;
+
+// Mark specific fields as readonly after creation
+type FrozenLead = Readonly<Pick<Lead, "id" | "createdAt">> & Omit<Lead, "id" | "createdAt">;
+```
+
+## The One Rule
+
+> If you're typing `any`, you're borrowing time from your future self.
+
+Use `unknown` and narrow it. Use `satisfies` to validate object shapes. Use Zod at the boundary. Inside your own code, keep the types as specific as the domain demands.
+
+My full Next.js + TypeScript starter setup is on [GitHub](https://github.com/siyamzakir).

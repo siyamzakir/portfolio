@@ -1,36 +1,149 @@
 ---
-title: "Testing React Applications: A Practical Guide"
-publishedAt: "2024-12-14"
-updatedAt: "2024-12-14"
-author: "John Doe"
-summary: "From unit tests to E2E—learn how to build confidence in your React applications with comprehensive testing."
-image: "https://images.unsplash.com/photo-1516116216624-53e697fedbea?w=800&h=192&fit=crop"
+title: "Next.js Performance Lessons from Real Production Apps"
+publishedAt: "2025-08-12"
+updatedAt: "2025-08-12"
+author: "Siyam Zakir"
+summary: "Not theory — actual performance problems I hit shipping Next.js apps for real clients, and how I solved each one."
+image: "https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=800&h=192&fit=crop"
 ---
 
-# Testing React Applications: A Practical Guide
+I've shipped Next.js in production across projects that look nothing alike: a real estate listing platform with thousands of properties, an LMS with video streaming, an immigration CRM with heavy dashboard queries, and an AI chatbot interface. Each one taught me something different about performance.
 
-Tests are your safety net — they let you refactor with confidence and ship changes without fear. The goal is not “as many tests as possible”; it’s <mark>confidence in the critical paths</mark>.
+Here are the lessons that came from actual production pain, not benchmarks.
 
-If your test suite feels slow or fragile, it usually means you’re testing the wrong thing. In practice, you can ignore a lot of “perfect coverage” advice and focus on a few high-signal habits.
+## 1. `use client` Is a Budget — Spend It Wisely
 
-## What to test (a simple rule)
+Every `'use client'` directive sends JavaScript to the browser. On the real estate platform ([realestate.appszonebd.com](https://realestate.appszonebd.com/)), I had a layout component marked as a client component because one child needed a click handler. That pulled the entire property listing tree into the client bundle.
 
-- **Unit tests**: small, fast checks for logic and pure functions.
-- **Integration tests**: components + data + user flows (most value per test).
-- **E2E tests**: a few happy-path checks across the whole app.
+The fix: isolate the interactive part.
 
-## High-signal testing habits
+```tsx title="Before — entire layout is client"
+"use client";
+export function PropertyLayout({ properties, onFavourite }) {
+  // 400 lines of rendering + one click handler
+}
+```
 
-- Prefer user-facing assertions (what the user sees/does).
-- Use accessible queries first (roles, labels).
-- Mock at the boundary (network) instead of mocking implementation details.
+```tsx title="After — only the button is client"
+// PropertyLayout.tsx (Server Component)
+export function PropertyLayout({ properties }) {
+  return properties.map(p => (
+    <PropertyCard key={p.id} property={p}>
+      <FavouriteButton propertyId={p.id} /> {/* client component */}
+    </PropertyCard>
+  ));
+}
+```
 
-## Things to avoid
+Lighthouse score went from 61 → 89 on mobile.
 
-- ~~Testing internal component state~~ when behavior is what matters.
-- ~~Sprinkling test IDs everywhere~~ as a first choice.
-- Overusing snapshots that fail for harmless UI changes.
+## 2. Fetch at the Right Level
 
-## Wrap-up
+On the immigration CRM dashboard, I was fetching case counts, recent leads, and agent stats inside three separate client components — three separate round trips on every load.
 
-Start small: one integration test for your most important flow, then add unit tests for tricky logic. Over time, your tests become living documentation that helps you move faster.
+Moved the data fetch to the page (Server Component), passed it down:
+
+```tsx title="app/dashboard/page.tsx"
+export default async function DashboardPage() {
+  const [cases, leads, agents] = await Promise.all([
+    getCaseSummary(),
+    getRecentLeads(),
+    getAgentStats(),
+  ]);
+
+  return (
+    <DashboardLayout
+      cases={cases}
+      leads={leads}
+      agents={agents}
+    />
+  );
+}
+```
+
+One database round trip. No loading spinners on initial render.
+
+## 3. Image Optimisation Is Non-Negotiable
+
+The real estate platform had agents uploading 5MB DSLR photos. Without `next/image`, every listing page loaded 40MB+ of images.
+
+```tsx
+import Image from "next/image";
+
+export function PropertyPhoto({ src, alt }: { src: string; alt: string }) {
+  return (
+    <Image
+      src={src}
+      alt={alt}
+      width={800}
+      height={600}
+      placeholder="blur"
+      blurDataURL={generateBlurHash(src)}
+      sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 800px"
+    />
+  );
+}
+```
+
+Next.js converts to WebP, serves the right size per viewport, and lazy-loads below the fold. Page weight dropped from ~40MB to ~3MB.
+
+## 4. Cache Aggressively, Invalidate Precisely
+
+On the LMS at [theanalytichub.com](https://theanalytichub.com/training/), course content changes infrequently. Student progress changes constantly. Treating them the same was wasteful.
+
+```tsx
+// Course content — revalidate once per day
+const course = await fetch(`/api/courses/${id}`, {
+  next: { revalidate: 86400, tags: [`course-${id}`] }
+});
+
+// Student progress — never cache
+const progress = await fetch(`/api/progress/${studentId}`, {
+  cache: "no-store"
+});
+```
+
+When an instructor updates a course, we call:
+
+```ts
+revalidateTag(`course-${courseId}`);
+```
+
+Only that course's cache is busted. Everything else stays warm.
+
+## 5. Streaming for Slow Data
+
+The AI chatbot response can take 2–4 seconds to stream from OpenAI. Instead of blocking the whole page:
+
+```tsx title="ChatResponse.tsx"
+import { Suspense } from "react";
+
+export default function ChatPage() {
+  return (
+    <div>
+      <ChatHistory /> {/* renders immediately */}
+      <Suspense fallback={<ThinkingIndicator />}>
+        <StreamingResponse /> {/* streams in as AI responds */}
+      </Suspense>
+    </div>
+  );
+}
+```
+
+The user sees the conversation history instantly. The response streams in character by character. Perceived performance is dramatically better than waiting for the full response.
+
+## The Actual Performance Checklist
+
+| Check | Impact |
+|-------|--------|
+| Audit `'use client'` boundaries | High |
+| Fetch in Server Components, pass down | High |
+| Use `next/image` for every image | High |
+| Apply `revalidate` + `tags` per data type | Medium |
+| Stream slow responses with `Suspense` | Medium |
+| Run `ANALYZE=true next build` to spot fat bundles | Medium |
+| Lazy-import heavy client libs | Low-Medium |
+
+Performance is a feature. It's also the one feature users never ask for until they leave because it's missing.
+
+Follow my work on [GitHub](https://github.com/siyamzakir).

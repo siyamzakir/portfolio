@@ -1,56 +1,101 @@
 ---
-title: "10 Next.js Performance Tips for Production Apps"
-publishedAt: "2024-12-05"
-updatedAt: "2024-12-05"
-author: "John Doe"
-summary: "Practical optimization techniques to make your Next.js applications blazing fast in production."
-image: "https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=800&h=192&fit=crop"
+title: "Self-Hosting a Mail Server: What Nobody Warns You About"
+publishedAt: "2026-01-18"
+updatedAt: "2026-01-18"
+author: "Siyam Zakir"
+summary: "I moved AppsZone off Gmail and SES onto a self-hosted Postfix + Dovecot stack. Here's the full war story — the DNS hell, the spam traps, and why it was worth every hour."
+image: "https://images.unsplash.com/photo-1596526131083-e8c633c948d2?w=800&h=192&fit=crop"
 ---
 
-Performance isn't optional—it's a feature. Here are battle-tested tips for optimizing Next.js apps.
+Everyone says "just use Google Workspace" or "just use SES." And for most teams, that's the right call. But at [AppsZone](https://appszonebd.com), we needed full ownership of our communications — no third-party reading our client data, no vendor lock-in, no monthly SaaS creep.
 
-# 2. Optimize Images
+So I built our own mail server. Here's the honest version of that journey.
 
-Always use `next/image`
+## Why Self-Host at All?
 
-```tsx
-import Image from 'next/image';
+- Client data privacy (our CRM handles immigration documents)
+- Zero monthly email provider fee
+- Full control over deliverability configuration
+- Custom spam filtering tuned to our actual traffic
 
-export function Hero() {
-  return (
-    <Image
-      src="/hero.jpg"
-      alt="Hero image"
-      width={1200}
-      height={600}
-      priority // Load immediately for LCP
-      placeholder="blur"
-      blurDataURL="data:image/jpeg;base64,..."
-    />
-  );
-}
+## The Stack
+
+```
+OS:           Ubuntu 22.04 LTS
+MTA:          Postfix (SMTP)
+IMAP/POP3:    Dovecot
+Spam filter:  SpamAssassin + Amavis
+TLS:          Let's Encrypt (auto-renewed via certbot)
+DNS auth:     DKIM (OpenDKIM) + DMARC + SPF
+Monitoring:   Netdata + custom alerting
 ```
 
+## The DNS Part Nobody Warns You About
 
-## 4. Implement Proper Caching
+Setting up Postfix is an afternoon. Getting DNS right is a week.
 
-| Strategy | Use Case | TTL |
-|----------|----------|-----|
-| `force-cache` | Static data | Forever |
-| `revalidate: 3600` | Semi-static | 1 hour |
-| `revalidate: 60` | Frequently updated | 1 minute |
-| `no-store` | Real-time data | Never cache |
+```dns
+; MX record — where mail comes in
+@   IN  MX  10  mail.appszonebd.com.
 
-## 5. Minimize Client Components
+; SPF — who can send on our behalf
+@   IN  TXT "v=spf1 ip4:YOUR_SERVER_IP -all"
 
-Every `'use client'` directive adds to your JavaScript bundle. Keep client components small and focused:
+; DKIM — cryptographic signature
+mail._domainkey  IN  TXT  "v=DKIM1; k=rsa; p=YOUR_PUBLIC_KEY"
 
-## 6. Bundle Analysis
-
-```bash title="terminal"
-# Install analyzer
-npm install @next/bundle-analyzer
-
-# Run analysis
-ANALYZE=true npm run build
+; DMARC — what to do with failures
+_dmarc  IN  TXT  "v=DMARC1; p=reject; rua=mailto:dmarc@appszonebd.com"
 ```
+
+Set `p=none` first. Watch the `rua` aggregate reports for two weeks before switching to `p=reject`. Skipping this step means blocking legitimate mail.
+
+## Postfix: The Key Configuration
+
+```conf title="/etc/postfix/main.cf"
+myhostname = mail.appszonebd.com
+mydomain = appszonebd.com
+myorigin = $mydomain
+
+# TLS
+smtpd_tls_cert_file = /etc/letsencrypt/live/mail.appszonebd.com/fullchain.pem
+smtpd_tls_key_file  = /etc/letsencrypt/live/mail.appszonebd.com/privkey.pem
+smtpd_use_tls = yes
+smtp_tls_security_level = may
+
+# Spam protection
+smtpd_helo_required = yes
+smtpd_recipient_restrictions =
+    permit_mynetworks,
+    permit_sasl_authenticated,
+    reject_unauth_destination,
+    reject_rbl_client zen.spamhaus.org
+```
+
+## Automate TLS Renewal
+
+```bash title="certbot-renew-hook.sh"
+#!/bin/bash
+# /etc/letsencrypt/renewal-hooks/deploy/reload-mail.sh
+systemctl reload postfix
+systemctl reload dovecot
+```
+
+Certbot calls this automatically after each renewal. Never touch it again.
+
+## The Result
+
+| Metric | Before (SES) | After (Self-hosted) |
+|--------|-------------|---------------------|
+| Monthly cost | $40/mo | $0 (VPS already running) |
+| Deliverability score | 87/100 | 98/100 |
+| DMARC compliance | Partial | Full (`p=reject`) |
+| Data ownership | AWS | Us |
+
+## What I'd Do Differently
+
+1. Set up monitoring **before** going live, not after the first bounce storm.
+2. Warm up the IP slowly — don't send 1,000 emails on day one.
+3. Keep a fallback MX pointing to a secondary relay for the first 30 days.
+
+Self-hosting email isn't for everyone. But if you care about data sovereignty and have a DevOps background, it's completely doable and surprisingly stable once it's running.
